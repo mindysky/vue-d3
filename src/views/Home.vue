@@ -3,7 +3,8 @@
     <div class="home">
       <router-link to="/home" tag="a" target="_blank">主页</router-link>
       <router-link to="/bar"  tag="a" target="_blank">柱状图</router-link>
-      <router-link to="/home"  tag="a">关系图</router-link>
+      <router-link to="/relation"  tag="a" target="_blank">关系图</router-link>
+      <router-link to="/relation2"  tag="a" target="_blank">关系图2</router-link>
       <router-link to="/home"  tag="a">主页</router-link>
       <router-link to="/home"  tag="a">主页</router-link>
     </div>
@@ -31,7 +32,7 @@ export default {
   width: 1000px;
   background: wheat;
   margin: 40px auto;
-  height: 300px;
+  height: 100%;
   overflow: hidden;
   padding: 30px;
   a{

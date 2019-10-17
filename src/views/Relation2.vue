@@ -2,7 +2,7 @@
 <template>
   <div class="d3-box">
     <div class="tree-container">
-        <h2>d3-tree</h2>
+       <h2>d3-tree</h2>
       <router-link to="/home" tag="a">主页</router-link>
       <div class="controls">
         <div>

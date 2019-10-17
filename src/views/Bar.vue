@@ -2,7 +2,7 @@
 <template>
   <div class="d3-box">
     <div class="tree-container">
-      <h2>d3-bar</h2>
+      <h2>d3-bar  <router-link to="/home" tag="a">主页</router-link></h2>
       <div id="tree" ref="tree">
         <svg class="bar-chart" />
       </div>
@@ -67,14 +67,15 @@ export default {
 <style lang="scss">
 .d3-box {
   width: 1280px;
-  height: 380px;
+  height: 100%;
   margin: 0 auto;
   background: pink;
 }
 .tree-container {
+   height: 100%;
   #tree {
-    height: 300px;
-    background-color: wheat;
+    height: 100%;
+    background-color: rgba(240, 239, 239, 0.637);
   }
 }
 .bar-positive {

@@ -29,8 +29,10 @@ Vue.component('file-upload', VueUploadComponent)
 import echarts from 'echarts'
 Vue.prototype.$echarts = echarts
 
+import * as d3 from "d3";
 import VueD3 from "vue-d3"
 Vue.use(VueD3);
+
 
 
 Vue.config.productionTip = false;

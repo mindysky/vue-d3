@@ -3,6 +3,7 @@ import Router from "vue-router";
 import Home from "../views/Home"
 import Bar from "../views/Bar"
 import Relation from "../views/Relation"
+import Relation2 from "../views/Relation2"
 
 
 const originalPush = Router.prototype.push
@@ -32,7 +33,13 @@ const routes =  [
     path: "/relation",
     name: "relation",
     component: Relation
-  }]
+  },
+  {
+    path: "/relation2",
+    name: "relation2",
+    component: Relation2
+  },
+]
 
 const router = new Router(
   {
