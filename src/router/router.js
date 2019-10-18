@@ -2,8 +2,11 @@ import Vue from "vue";
 import Router from "vue-router";
 import Home from "../views/Home"
 import Bar from "../views/Bar"
+import Bar2 from "../views/Bar2"
 import Relation from "../views/Relation"
-import Relation2 from "../views/Relation2"
+import Face from "../views/Face"
+import World from "../views/World"
+import Dendrogram from "../views/Dendrogram"
 
 
 const originalPush = Router.prototype.push
@@ -35,15 +38,30 @@ const routes =  [
     component: Relation
   },
   {
-    path: "/relation2",
-    name: "relation2",
-    component: Relation2
+    path: "/face",
+    name: "face",
+    component: Face
+  },
+  {
+    path: "/world",
+    name: "world",
+    component: World
+  },
+  {
+    path: "/bar2",
+    name: "bar2",
+    component: Bar2
+  },
+  {
+    path: "/dendrogram",
+    name: "dendrogram",
+    component: Dendrogram
   },
 ]
 
 const router = new Router(
   {
-    mode: "history",
+    mode: "hash",
     base: process.env.BASE_URL,
     routes,
   }

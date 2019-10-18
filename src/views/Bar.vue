@@ -11,8 +11,6 @@
 </template>
 
 <script>
-import * as d3 from "d3";
-
 export default {
   name: "RelationTree",
   props: {},
@@ -30,7 +28,7 @@ export default {
     let barWidth = svgWidth / dataset.length;
 
     // 绘制图形
-    let svg = d3
+    let svg = this.$d3
       .select("svg")
       .attr("width", svgWidth)
       .attr("height", svgHeight);
