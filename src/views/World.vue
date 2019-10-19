@@ -1,11 +1,9 @@
-<!-- author:min date：2019/10/16  17:50:56 -->
 <template>
   <div class="d3-box">
-    <div class="tree-container">
-      <h2>d3-tree</h2>
+    <div class="tree-container" ref="box">
+      <h2>d3-world</h2>
       <router-link to="/home" tag="a">主页</router-link>
-
-      <svg :width="this.width" :height="this.height" />
+      <svg />
     </div>
   </div>
 </template>
@@ -17,26 +15,25 @@ export default {
   props: {},
   data() {
     return {
-      csv: null,
-      selected: null,
-      search: "force",
-      width: 0,
-      height: 0
     };
+  },
+  created(){
+    
   },
   mounted() {
     const svg = this.$d3.select("svg");
-    this.width = document.body.clientWidth;
-    this.height = document.body.clientHeight;
+    const width = this.$refs.box.clientWidth;
+    const height = this.$refs.box.clientHeight;
+    console.log(height);
     const margin = { top: 0, right: 50, bottom: 0, left: 75 };
-    const innerWidth = this.width - margin.left - margin.right;
-    const innerHeight = this.height - margin.top - margin.bottom;
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
 
     const treeLayout = this.$d3.tree().size([innerHeight, innerWidth]);
 
     const zoomG = svg
-      .attr("width", this.width)
-      .attr("height", this.height)
+      .attr("width", width)
+      .attr("height", height)
       .append("g");
 
     const g = zoomG
@@ -48,12 +45,11 @@ export default {
         zoomG.attr("transform", event.transform);
       })
     );
-    json("/world.json").then(res => {
-      // res = JSON.parse(res);
-      console.log(res);
-      const root = this.$d3.hierarchy(res);
-      const links = this.$d3.treeLayout(root).links();
-      // const linkPathGenerator = this.$d3.linkHorizontal().x(d => d.y).y(d => d.x);
+    json("./world.json").then(data => {
+      console.log(data);
+      const root = this.$d3.hierarchy(data);
+      const links = treeLayout(root).links();
+      const linkPathGenerator = this.$d3.linkHorizontal().x(d => d.y).y(d => d.x);
 
       g.selectAll("path")
         .data(links)
@@ -79,4 +75,28 @@ export default {
 </script>
 
 <style lang="scss">
+body {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+path {
+  fill: none;
+  stroke: #56c2a3;
+}
+
+text {
+  text-shadow:
+   -1px -1px 3px white,
+   -1px  1px 3px white,
+    1px -1px 3px white,
+    1px  1px 3px white;
+  pointer-events: none;
+  font-family: 'Playfair Display', serif;
+}
 </style>

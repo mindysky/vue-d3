@@ -1,75 +1,12 @@
-<!-- author:min date：2019/10/16  17:50:56 -->
 <template>
   <div class="d3-box">
     <div class="tree-container">
-        <h2>d3-tree</h2>
-      <router-link to="/home" tag="a">主页</router-link>
-      <div class="controls">
-        <div>
-          <label>Chart width</label>
-          <input type="range" v-model="settings.width" min="0" max="1000" />
-        </div>
+      <h2>
+        d3-relation
+        <router-link to="/home" tag="a">主页</router-link>
+      </h2>
 
-        <div>
-          <label>Stroke color</label>
-          <input type="color" v-model="settings.strokeColor" />
-        </div>
-
-        <div>
-          <label>Search…</label>
-          <input type="text" v-model="search" />
-        </div>
-
-        <button v-on:click="add">Add node</button>
-
-        <div>Selected: {{ selected }}</div>
-      </div>
-     
-      <div id="tree" ref="tree">
-        <svg v-bind:width="settings.width" v-bind:height="settings.height">
-          <!-- In contrast to D3’s "select" methods, we define the graphical elements explicitely here and use the template syntax to loop through collections and bind properties such as "d" or "r" to those elements. -->
-
-          <transition-group tag="g" name="line">
-            <!-- Links are represented as paths -->
-
-            <path
-              v-for="link in links"
-              class="link"
-              v-bind:key="link.id"
-              v-bind:d="link.d"
-              v-bind:style="link.style"
-            />
-          </transition-group>
-
-          <!-- We can now also use events to elements that will call respective methods on the Vue instance -->
-
-          <transition-group tag="g" name="list">
-            <g
-              class="node"
-              v-on:click="select(index, node)"
-              v-for="(node, index) in nodes"
-              v-bind:key="node.id"
-              v-bind:style="node.style"
-              v-bind:class="[node.className, {'highlight': node.highlight}]"
-            >
-              <!-- Circles for each node -->
-
-              <circle
-                v-bind:r="node.r"
-                v-bind:style="{'fill': index == selected ? '#ff0000' : '#bfbfbf'}"
-              />
-
-              <!-- Finally, text labels -->
-
-              <text
-                v-bind:dx="node.textpos.x"
-                v-bind:dy="node.textpos.y"
-                v-bind:style="node.textStyle"
-              >{{ node.text }}</text>
-            </g>
-          </transition-group>
-        </svg>
-      </div>
+      <svg />
     </div>
   </div>
 </template>
@@ -80,215 +17,578 @@ export default {
   name: "Relation",
   props: {},
   data() {
-    return {
-      csv: null,
-      selected: null,
-      search: "force",
-      settings: {
-        strokeColor: "#19B5FF",
-        width: 960,
-        height: 2000
-      }
-    };
+    return {};
   },
   mounted() {
-    var that = this;
-    d3.csv("flare.csv", function(error, data) {
-      if (error) throw error;
+    const width = 800;
+    const height = 600;
+    const initScale = 0.6;
+    let draging = false;
 
-      // Load the CSV data
-      // After the CSV has been loaded, the computed properties will automatically re-compute (root, tree, and then nodes & links…)
+    const nodeConf = {
+      fillColor: {
+        Human: "rgb(255, 76, 10)",
+        Company: "rgb(35, 148, 206)"
+      },
+      strokeColor: {
+        Human: "rgb(244,56,0)",
+        Company: "rgb(35, 148, 206)"
+      },
+      strokeWidth: {
+        Human: 3,
+        Company: 0
+      },
+      textFillColor: {
+        Human: "#fff",
+        Company: "#fff"
+      },
+      radius: {
+        Human: 36,
+        Company: 56
+      }
+    };
 
-      that.csv = data;
+    const lineConf = {
+      strokeColor: {
+        SERVE: "rgb(128, 194, 216)",
+        OWN: "rgb(204, 225, 152)",
+        INVEST_C: "rgb(242, 90, 41)"
+      }
+    };
+
+    const nodeTextFontSize = 16;
+    const lineTextFontSize = 12;
+
+    let nodesMap = {};
+    let linkMap = {};
+
+    // 力导向图
+    const force = d3.force()
+      .size([width, height]) // 画布的大小
+      .linkDistance(400) // 连线长度
+      .charge(-2000); // 排斥/吸引，值越小越排斥
+
+    // 全图缩放器
+    const zoom = d3.zoom()
+      .scaleExtent([0.25, 2])
+      .on("zoom", zoomFn);
+
+    // 节点拖拽器（使用 d3.behavior.drag 节点拖动失效）
+    const drag = force
+      .drag()
+      .origin(d => d)
+      .on("dragstart", dragstartFn)
+      .on("drag", dragFn)
+      .on("dragend", dragendFn);
+
+    // SVG
+    const svg = d3
+      .select("#canvas")
+      .append("svg")
+      .attr("width", width)
+      .attr("height", height)
+      .append("g")
+      .call(zoom)
+      .on("dblclick.zoom", null);
+
+    // 缩放层（位置必须在 container 之前）
+    const zoomOverlay = svg
+      .append("rect")
+      .attr("width", width)
+      .attr("height", height)
+      .style("fill", "none")
+      .style("pointer-events", "all");
+
+    const container = svg
+      .append("g")
+      .attr("transform", "scale(" + initScale + ")")
+      .attr("class", "container");
+
+    // 请求数据，绘制图表
+    d3.json(api, (error, resp) => {
+      if (error) {
+        return console.error(error);
+      }
+
+      // 初始化
+      setTimeout(function() {
+        initialize(resp);
+      }, 10);
     });
-  },
-  computed: {
-    // once we have the CSV loaded, the "root" will be calculated
 
-    root: function() {
-      var that = this;
+    // 初始化
+    function initialize(resp) {
+      let { nodes, relations } = resp;
 
-      if (this.csv) {
-        var stratify = d3.stratify().parentId(function(d) {
-          return d.id.substring(0, d.id.lastIndexOf("."));
+      const nodesLength = nodes.length;
+
+      // 生成 nodes map
+      nodesMap = genNodesMap(nodes);
+
+      // 构建 nodes（不能直接使用 api 中的 nodes）
+      nodes = d3.values(nodesMap);
+
+      // 起点和终点相同的关系映射
+      linkMap = genLinkMap(relations);
+
+      // 构建 links（source 属性必须从 0 开始）
+      const links = genLinks(relations);
+
+      // 绑定力导向图数据
+      force
+        .nodes(nodes) // 设定节点数组
+        .links(links); // 设定连线数组
+
+      // 开启力导向布局
+      force.start();
+
+      // 手动快速布局
+      for (let i = 0, n = 1000; i < n; ++i) {
+        force.tick();
+      }
+
+      // 停止力布局
+      force.stop();
+
+      // 固定所有节点
+      nodes.forEach(node => {
+        node.fixed = true;
+      });
+
+      // 箭头
+      const marker = container
+        .append("svg:defs")
+        .selectAll("marker")
+        .data(force.links())
+        .enter()
+        .append("svg:marker")
+        .attr("id", link => "marker-" + link.id)
+        .attr("markerUnits", "userSpaceOnUse")
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", nodeConf.radius.Company)
+        .attr("refY", 0)
+        .attr("markerWidth", 12)
+        .attr("markerHeight", 12)
+        .attr("orient", "auto")
+        .attr("stroke-width", 2)
+        .append("svg:path")
+        .attr("d", "M2,0 L0,-3 L9,0 L0,3 M2,0 L0,-3")
+        .attr("fill", link => lineConf.strokeColor[link.type]);
+
+      // 节点连线
+      const linkLine = container
+        .selectAll(".link")
+        .data(force.links())
+        .enter()
+        .append("path")
+        .attr("class", "link")
+        .attr({
+          "marker-end": link => "url(#" + "marker-" + link.id + ")", // 标记箭头
+          d: link => genLinkPath(link),
+          id: link => "link-" + link.id
+        })
+        .style("stroke", link => lineConf.strokeColor[link.type]);
+
+      // 连线的文字
+      const lineText = container
+        .append("g")
+        .selectAll(".linetext")
+        .data(force.links())
+        .enter()
+        .append("text")
+        .style("font-size", lineTextFontSize)
+        .attr({
+          class: "linetext",
+          id: link => "linktext" + link.id,
+          dx: link => getLineTextDx(link),
+          dy: 5
         });
 
-        // attach the tree to the Vue data object
-        return this.tree(
-          stratify(that.csv).sort(function(a, b) {
-            return a.height - b.height || a.id.localeCompare(b.id);
-          })
+      lineText
+        .append("textPath")
+        .attr("xlink:href", link => "#link-" + link.id)
+        // .text(link => link.label);
+        .text(link => link.labels);
+
+      // 节点（圆）
+      const nodeCircle = container
+        .append("g")
+        .selectAll(".node")
+        .data(force.nodes())
+        .enter()
+        .append("g")
+        .style("cursor", "pointer")
+        .attr("class", "node")
+        .attr("cx", node => node.x)
+        .attr("cy", node => node.y)
+        .call(drag); // 节点可拖动
+
+      nodeCircle
+        .append("circle")
+        // .style('fill-opacity', .3)
+        .style("fill", node => nodeConf.fillColor[node.ntype])
+        .style("stroke", node => nodeConf.strokeColor[node.ntype])
+        .style("stroke-width", node => nodeConf.strokeWidth[node.ntype])
+        .attr("class", "node-circle")
+        .attr("id", node => "node-circle-" + node.id)
+        .attr("r", node => nodeConf.radius[node.ntype]);
+
+      // 鼠标交互
+      nodeCircle
+        .on("mouseenter", function(currNode) {
+          if (draging) {
+            return;
+          }
+          toggleNode(nodeCircle, currNode, true);
+          toggleLine(linkLine, currNode, true);
+          toggleMarker(marker, currNode, true);
+          toggleLineText(lineText, currNode, true);
+        })
+        .on("mouseleave", function(currNode) {
+          if (draging) {
+            return;
+          }
+          toggleNode(nodeCircle, currNode, false);
+          toggleLine(linkLine, currNode, false);
+          toggleMarker(marker, currNode, false);
+          toggleLineText(lineText, currNode, false);
+        });
+
+      // 节点文字
+      const nodeText = nodeCircle
+        .append("text")
+        .attr("class", "nodetext")
+        .attr("id", node => "node-text-" + node.id)
+        .style("font-size", nodeTextFontSize)
+        .style("font-weight", 400)
+        .style("fill", ({ ntype }) => nodeConf.textFillColor[ntype])
+        .attr("text-anchor", "middle")
+        .attr("dy", ".35em")
+        .attr("x", function({ name }) {
+          return textBreaking(d3.select(this), name);
+        });
+
+      // 更新力导向图
+      function tick() {
+        // 节点位置
+        nodeCircle.attr(
+          "transform",
+          node => "translate(" + node.x + "," + node.y + ")"
         );
-      }
-    },
-
-    // the "tree" is also a computed property so that it is always up to date when the width and height settings change
-
-    tree: function() {
-      return d3
-        .cluster()
-        .size([this.settings.height, this.settings.width - 160]);
-    },
-
-    // Instead of enter, update, exit, we mainly use computed properties and instead of "d3.data()" we can use array.map to create objects that hold class names, styles, and other attributes for each datum
-
-    nodes: function() {
-      var that = this;
-      if (this.root) {
-        return this.root.descendants().map(function(d) {
-          return {
-            id: d.id,
-            r: 2.5,
-            className:
-              "node" + (d.children ? " node--internal" : " node--leaf"),
-            text: d.id.substring(d.id.lastIndexOf(".") + 1),
-            highlight:
-              d.id.toLowerCase().indexOf(that.search.toLowerCase()) != -1 &&
-              that.search != "",
-            style: {
-              transform: "translate(" + d.y + "px," + d.x + "px)"
-            },
-            textpos: {
-              x: d.children ? -8 : 8,
-              y: 3
-            },
-            textStyle: {
-              textAnchor: d.children ? "end" : "start"
-            }
-          };
+        // 连线路径
+        linkLine.attr("d", link => genLinkPath(link));
+        // 连线文字位置
+        lineText.attr("dx", link => getLineTextDx(link));
+        // 连线文字角度
+        lineText.attr("transform", function(link) {
+          return getLineTextAngle(link, this.getBBox());
         });
       }
-    },
 
-    // Instead of enter, update, exit, we mainly use computed properties and instead of "d3.data()" we can use array.map to create objects that hold class names, styles, and other attributes for each datum
+      // 更新力导向图
+      // 注意1：必须调用一次 tick （否则，节点会堆积在左上角）
+      // 注意2：调用位置必须在 nodeCircle, nodeText, linkLine, lineText 后
+      setTimeout(function() {
+        tick();
+      }, 10);
 
-    links: function() {
-      var that = this;
+      // 监听力学图运动事件，更新坐标
+      force.on("tick", tick);
+    }
 
-      if (this.root) {
-        // here we’ll calculate the "d" attribute for each path that is then used in the template where we use "v-for" to loop through all of the links to create <path> elements
+    function genLinks(relations) {
+      const indexHash = {};
 
-        return this.root
-          .descendants()
-          .slice(1)
-          .map(function(d) {
-            return {
-              id: d.id,
-              d:
-                "M" +
-                d.y +
-                "," +
-                d.x +
-                "C" +
-                (d.parent.y + 100) +
-                "," +
-                d.x +
-                " " +
-                (d.parent.y + 100) +
-                "," +
-                d.parent.x +
-                " " +
-                d.parent.y +
-                "," +
-                d.parent.x,
+      return relations.map(function(
+        { id, startNode, endNode, label, type },
+        i
+      ) {
+        const linkKey = startNode + "-" + endNode;
+        const count = linkMap[linkKey];
+        if (indexHash[linkKey]) {
+          indexHash[linkKey] -= 1;
+        } else {
+          indexHash[linkKey] = count - 1;
+        }
 
-              // here we could of course calculate colors depending on data but for now all links share the same color from the settings object that we can manipulate using UI controls and v-model
+        return {
+          id,
+          source: nodesMap[startNode],
+          target: nodesMap[endNode],
+          label,
+          type,
+          labels: linkMap[linkKey + "-label"],
+          count: linkMap[linkKey],
+          index: indexHash[linkKey]
+        };
+      });
+    }
 
-              style: {
-                stroke: that.settings.strokeColor
-              }
-            };
+    function genLinkMap(relations) {
+      const hash = {};
+      relations.map(function({ startNode, endNode, label }) {
+        const key = startNode + "-" + endNode;
+        if (hash[key]) {
+          hash[key] += 1;
+          hash[key + "-label"] += "、" + label;
+        } else {
+          hash[key] = 1;
+          hash[key + "-label"] = label;
+        }
+      });
+      return hash;
+    }
+
+    function genNodesMap(nodes) {
+      const hash = {};
+      nodes.map(function({ id, name, ntype }) {
+        hash[id] = {
+          id,
+          name,
+          ntype
+        };
+      });
+      return hash;
+    }
+
+    // 生成关系连线路径
+    function genLinkPath(link) {
+      const sr = nodeConf.radius.Human;
+      const tr = nodeConf.radius.Company;
+
+      const count = link.count;
+      const index = link.index;
+
+      let sx = link.source.x;
+      let tx = link.target.x;
+      let sy = link.source.y;
+      let ty = link.target.y;
+
+      return "M" + sx + "," + sy + " L" + tx + "," + ty;
+    }
+
+    function getLineAngle(sx, sy, tx, ty) {
+      // 两点 x, y 坐标偏移值
+      const x = tx - sx;
+      const y = ty - sy;
+      // 斜边长度
+      const hypotenuse = Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2)) | 1;
+      // 求出弧度
+      const cos = x / hypotenuse;
+      const radian = Math.acos(cos);
+      // 用弧度算出角度
+      let angle = 180 / (Math.PI / radian);
+      if (y < 0) {
+        angle = -angle;
+      } else if (y == 0 && x < 0) {
+        angle = 180;
+      }
+      return angle;
+    }
+
+    function zoomFn() {
+      const { translate, scale } = d3.event;
+      container.attr(
+        "transform",
+        "translate(" + translate + ")scale(" + scale * initScale + ")"
+      );
+    }
+
+    function dragstartFn(d) {
+      draging = true;
+      d3.event.sourceEvent.stopPropagation();
+      force.start();
+    }
+
+    function dragFn(d) {
+      draging = true;
+      d3.select(this)
+        .attr("cx", (d.x = d3.event.x))
+        .attr("cy", (d.y = d3.event.y));
+    }
+
+    function dragendFn(d) {
+      draging = false;
+      force.stop();
+    }
+
+    function isLinkLine(node, link) {
+      return link.source.id == node.id || link.target.id == node.id;
+    }
+
+    function isLinkNode(currNode, node) {
+      if (currNode.id === node.id) {
+        return true;
+      }
+      return (
+        linkMap[currNode.id + "-" + node.id] ||
+        linkMap[node.id + "-" + currNode.id]
+      );
+    }
+
+    function textBreaking(d3text, text) {
+      const len = text.length;
+      if (len <= 4) {
+        d3text
+          .append("tspan")
+          .attr("x", 0)
+          .attr("y", 2)
+          .text(text);
+      } else {
+        const topText = text.substring(0, 4);
+        const midText = text.substring(4, 9);
+        let botText = text.substring(9, len);
+        let topY = -22;
+        let midY = 8;
+        let botY = 34;
+        if (len <= 10) {
+          topY += 10;
+          midY += 10;
+        } else {
+          botText = text.substring(9, 11) + "...";
+        }
+
+        d3text.text("");
+        d3text
+          .append("tspan")
+          .attr("x", 0)
+          .attr("y", topY)
+          .text(function() {
+            return topText;
+          });
+        d3text
+          .append("tspan")
+          .attr("x", 0)
+          .attr("y", midY)
+          .text(function() {
+            return midText;
+          });
+        d3text
+          .append("tspan")
+          .attr("x", 0)
+          .attr("y", botY)
+          .text(function() {
+            return botText;
           });
       }
     }
-  },
-  methods: {
-    add: function() {
-      this.csv.push({
-        id: "flare.physics.Dummy",
-        value: 0
-      });
-    },
-    select: function(index, node) {
-      this.selected = index;
+
+    function getLineTextDx(d) {
+      const sr = nodeConf.radius[d.source.ntype];
+      const sx = d.source.x;
+      const sy = d.source.y;
+      const tx = d.target.x;
+      const ty = d.target.y;
+
+      const distance = Math.sqrt(Math.pow(tx - sx, 2) + Math.pow(ty - sy, 2));
+
+      // const textLength = d.label.length;
+      const textLength = d.labels.length;
+      const deviation = 8; // 调整误差
+      const dx =
+        (distance - sr - textLength * lineTextFontSize) / 2 + deviation;
+
+      return dx;
     }
-  }
+
+    function getLineTextAngle(d, bbox) {
+      if (d.target.x < d.source.x) {
+        const { x, y, width, height } = bbox;
+        const rx = x + width / 2;
+        const ry = y + height / 2;
+        return "rotate(180 " + rx + " " + ry + ")";
+      } else {
+        return "rotate(0)";
+      }
+    }
+
+    function toggleNode(nodeCircle, currNode, isHover) {
+      if (isHover) {
+        // 提升节点层级
+        nodeCircle.sort((a, b) => (a.id === currNode.id ? 1 : -1));
+        // this.parentNode.appendChild(this);
+        nodeCircle
+          .style("opacity", 0.1)
+          .filter(node => isLinkNode(currNode, node))
+          .style("opacity", 1);
+      } else {
+        nodeCircle.style("opacity", 1);
+      }
+    }
+
+    function toggleLine(linkLine, currNode, isHover) {
+      if (isHover) {
+        // 加重连线样式
+        linkLine
+          .style("opacity", 0.1)
+          .filter(link => isLinkLine(currNode, link))
+          .style("opacity", 1)
+          .classed("link-active", true);
+      } else {
+        // 连线恢复样式
+        linkLine.style("opacity", 1).classed("link-active", false);
+      }
+    }
+
+    function toggleLineText(lineText, currNode, isHover) {
+      if (isHover) {
+        // 只显示相连连线文字
+        lineText.style("fill-opacity", link =>
+          isLinkLine(currNode, link) ? 1.0 : 0.0
+        );
+      } else {
+        // 显示所有连线文字
+        lineText.style("fill-opacity", "1.0");
+      }
+    }
+
+    function toggleMarker(marker, currNode, isHover) {
+      if (isHover) {
+        // 放大箭头
+        marker
+          .filter(link => isLinkLine(currNode, link))
+          .style("transform", "scale(1.5)");
+      } else {
+        // 恢复箭头
+        marker
+          .attr("refX", nodeConf.radius.Company)
+          .style("transform", "scale(1)");
+      }
+    }
+
+    function round(num, pow = 2) {
+      const multiple = Math.pow(10, pow);
+      return Math.round(num * multiple) / multiple;
+    }
+  },
+  computed: {},
+  methods: {}
 };
 </script>
 
 <style lang="scss">
-.node {
-  opacity: 1;
+svg {
+  background: rgb(245, 245, 245);
 }
 
-.node circle {
-  fill: #999;
-  cursor: pointer;
-}
-
-.node text {
-  font: 10px sans-serif;
-  cursor: pointer;
-}
-
-.node--internal circle {
-  fill: #555;
-}
-
-.node--internal text {
-  text-shadow: 0 1px 0 #fff, 0 -1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff;
+text {
+  font: Microsoft YaHei;
+  pointer-events: none;
+  user-select: none;
 }
 
 .link {
-  fill: none;
-  stroke: #555;
-  stroke-opacity: 0.4;
-  stroke-width: 1.5px;
-  stroke-dasharray: 1000;
+  stroke-opacity: 1;
+  stroke-width: 0.8;
 }
 
-.node:hover {
-  pointer-events: all;
-  stroke: #ff0000;
+.link-active {
+  stroke-opacity: 1;
+  stroke-width: 3;
 }
 
-.node.highlight {
-  fill: red;
-}
-
-.controls {
-  position: fixed;
-  top: 16px;
-  left: 16px;
-  background: #f8f8f8;
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-}
-
-.controls > * + * {
-  margin-top: 1rem;
-}
-
-label {
-  display: block;
-}
-
-.list-enter-active,
-.list-leave-active {
-  transition: all 1s;
-}
-.list-enter, .list-leave-to /* .list-leave-active for <2.1.8 */ {
-  opacity: 0;
-  transform: translateY(30px);
-}
-
-.line-enter-active,
-.line-leave-active {
-  transition: all 2s;
-  stroke-dashoffset: 0;
-}
-.line-enter, .line-leave-to /* .list-leave-active for <2.1.8 */ {
-  stroke-dashoffset: 1000;
+.linetext {
+  font-family: Microsoft YaHei;
+  text-shadow: 0 1px 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, -1px 0 0 #fff;
 }
 </style>
